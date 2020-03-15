@@ -38,11 +38,48 @@ var HTTPListenAddr string
 
 // Invoke runs the passed test-case and reports the result.
 func Invoke(tc func(*RunEnv) error) {
-	runenv := CurrentRunEnv()
+	var (
+		runenv        = CurrentRunEnv()
+		start         = time.Now()
+		durationGauge = NewGauge(runenv, "plan_duration", "Run time (seconds)")
+	)
 
-	defer runenv.Close()
+	setupHTTPListener(runenv)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// The prometheus pushgateway has a customized scrape interval, which is used to hint to the
+	// prometheus operator at which interval the it should be scraped. This is currently set to 5s.
+	// To provide an updated metric in every scrape, jobs will push to the pushgateway at the same
+	// interval. When this "push_interval" is changed, you may want to change the scrape interval
+	// on the pushgateway
+	pushgateway := runenv.BooleanParam("enablegateway")
+	if pushgateway {
+		pushStopCh := make(chan struct{})
+		go func() {
+			pushInterval := 5 * time.Second
+			for {
+				select {
+				case <-time.After(pushInterval):
+					err := runenv.MetricsPusher.Add()
+					if err != nil {
+						runenv.RecordMessage("error during periodic metric push: %w", err)
+					}
+				case <-pushStopCh:
+					return
+				}
+			}
+		}()
+
+		// Push metrics one last time, including the duration for the whole run.
+		defer func() {
+			defer close(pushStopCh)
+
+			durationGauge.Set(time.Since(start).Seconds())
+			err := runenv.MetricsPusher.Add()
+			if err != nil {
+				runenv.RecordMessage("error during end metric push: %w", err)
+			}
+		}()
+	}
 
 	setupHTTPListener(runenv)
 	metricsDoneCh := setupMetrics(ctx, runenv)

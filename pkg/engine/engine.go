@@ -235,7 +235,7 @@ func (e *Engine) DoBuild(ctx context.Context, comp *api.Composition, output io.W
 	for i, grp := range comp.Groups {
 		i, grp := i, grp // captures
 
-		errgrp.Go(func() (err error) {
+		if err := func() (err error) {
 			logging.S().Infow("performing build for group", "plan", testplan, "group", grp.ID, "builder", builder)
 
 			in := &api.BuildInput{
@@ -258,7 +258,9 @@ func (e *Engine) DoBuild(ctx context.Context, comp *api.Composition, output io.W
 			ress[i] = res
 			logging.S().Infow("build succeeded", "plan", testplan, "group", grp.ID, "builder", builder, "artifact", res.ArtifactPath)
 			return nil
-		})
+		}(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Wait until all goroutines are done. If any failed, return the error.
