@@ -264,10 +264,12 @@ func SubtreeBench(runenv *runtime.RunEnv) error {
 	case "publish":
 		runenv.RecordMessage("i am the publisher")
 
-		for _, tst := range tests {
+		for j, tst := range tests {
+			runenv.RecordMessage("publish test %d", j)
 			for i := 1; i <= iterations; i++ {
 				t := prometheus.NewTimer(tst.Summary)
 				writer.Write(ctx, tst.Subtree, tst.Data)
+				runenv.RecordMessage("publish test %d iter %d", j, i)
 				t.ObserveDuration()
 			}
 		}
@@ -280,10 +282,12 @@ func SubtreeBench(runenv *runtime.RunEnv) error {
 		// if we are receiving, wait for the publisher to be done.
 		<-watcher.Barrier(ctx, handoff, int64(1))
 
-		for _, tst := range tests {
+		for j, tst := range tests {
+			runenv.RecordMessage("sub test %d", j)
 			ch := make(chan []byte, 1)
 			watcher.Subscribe(ctx, tst.Subtree, ch)
 			for i := 1; i <= iterations; i++ {
+				runenv.RecordMessage("publish test %d iter %d", j, i)
 				t := prometheus.NewTimer(tst.Summary)
 				b := <-ch
 				t.ObserveDuration()
@@ -292,6 +296,98 @@ func SubtreeBench(runenv *runtime.RunEnv) error {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+func StagingSubsBench(runenv *runtime.RunEnv) error {
+	rand.Seed(time.Now().UnixNano())
+
+	iterations := runenv.IntParam("iterations")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	watcher, writer := sync.MustWatcherWriter(ctx, runenv)
+	defer watcher.Close()
+	defer writer.Close()
+
+	if err := sync.WaitNetworkInitialized(ctx, runenv, watcher); err != nil {
+		return err
+	}
+
+	st := &sync.Subtree{
+		GroupKey:    "instances",
+		PayloadType: reflect.TypeOf((*string)(nil)),
+		KeyFunc: func(val interface{}) string {
+			return string(*val.(*string))
+		},
+	}
+
+	seq, err := writer.Write(ctx, st, &runenv.TestRun)
+	if err != nil {
+		return err
+	}
+
+	runenv.RecordMessage("I have seq %d", seq)
+
+	type testSpec struct {
+		Name    string
+		Data    *string
+		Subtree *sync.Subtree
+		Summary prometheus.Summary
+	}
+
+	// Create tests ranging from 64B to 64KiB.
+	// Note: anything over 1500 is likely to have ethernet fragmentation.
+	var tests []*testSpec
+	for i := 0; i < iterations; i++ {
+		name := fmt.Sprintf("subtree_time_%d", i)
+		desc := fmt.Sprintf("time to %d", i)
+		data := "signal"
+
+		ts := &testSpec{
+			Name: name,
+			Data: &data,
+			Subtree: &sync.Subtree{
+				GroupKey:    name,
+				PayloadType: reflect.TypeOf((*string)(nil)),
+			},
+			Summary: runtime.NewSummary(runenv, name, desc, prometheus.SummaryOpts{
+				Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.025, 0.9: 0.01, 0.95: 0.001, 0.99: 0.001},
+			}),
+		}
+		tests = append(tests, ts)
+	}
+
+	for _, tst := range tests {
+		t := prometheus.NewTimer(tst.Summary)
+		if _, err := writer.Write(ctx, tst.Subtree, tst.Data); err != nil {
+			return err
+		}
+		ch := make(chan *string, 1)
+		if err := watcher.Subscribe(ctx, tst.Subtree, ch); err != nil {
+			return err
+		}
+		doneCh := make(chan error, 1)
+		go func() {
+			var err error
+			for i := 0; i <= int(seq); i++ {
+				b := <-ch
+				if bytes.Compare([]byte(*tst.Data), []byte(*b)) != 0 {
+					err = fmt.Errorf("received unexpected value | expected: %v got : %v |", []byte(*tst.Data), []byte(*b))
+					break
+				}
+				runenv.RecordMessage("got message %d",i)
+			}
+			doneCh <- err
+		}()
+		err := <-doneCh
+		if err != nil {
+			return err
+		}
+		t.ObserveDuration()
 	}
 
 	return nil
