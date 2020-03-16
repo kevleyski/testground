@@ -339,8 +339,6 @@ func StagingSubsBench(runenv *runtime.RunEnv) error {
 		Summary prometheus.Summary
 	}
 
-	// Create tests ranging from 64B to 64KiB.
-	// Note: anything over 1500 is likely to have ethernet fragmentation.
 	var tests []*testSpec
 	for i := 0; i < iterations; i++ {
 		name := fmt.Sprintf("subtree_time_%d", i)
@@ -361,7 +359,13 @@ func StagingSubsBench(runenv *runtime.RunEnv) error {
 		tests = append(tests, ts)
 	}
 
-	for _, tst := range tests {
+	runenv.RecordMessage("iterations: %d", len(tests))
+
+	for i, tst := range tests {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		runenv.RecordMessage("running iteration: %d", i)
+
 		t := prometheus.NewTimer(tst.Summary)
 		if _, err := writer.Write(ctx, tst.Subtree, tst.Data); err != nil {
 			return err
@@ -371,19 +375,22 @@ func StagingSubsBench(runenv *runtime.RunEnv) error {
 			return err
 		}
 		doneCh := make(chan error, 1)
-		go func() {
+		go func(tst *testSpec) {
 			var err error
-			for i := 0; i <= int(seq); i++ {
+			for i := 1; i <= int(runenv.TestInstanceCount); i++ {
 				b := <-ch
 				if bytes.Compare([]byte(*tst.Data), []byte(*b)) != 0 {
 					err = fmt.Errorf("received unexpected value | expected: %v got : %v |", []byte(*tst.Data), []byte(*b))
 					break
 				}
-				runenv.RecordMessage("got message %d",i)
+				runenv.RecordMessage("got message %d", i)
 			}
 			doneCh <- err
-		}()
+		}(tst)
+		runenv.RecordMessage("awaiting to finish iteration: %d", i)
 		err := <-doneCh
+		cancel()
+		runenv.RecordMessage("iteration finished: %d; err: %s", i, err)
 		if err != nil {
 			return err
 		}
