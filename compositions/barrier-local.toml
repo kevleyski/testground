@@ -5,30 +5,30 @@
 [global]
   plan = "dht"
   case = "barrier"
-  total_instances = 32
+  total_instances = 150
   builder = "docker:go"
   runner = "local:docker"
 
 [[groups]]
   id = "balsam"
   [groups.instances]
-    count = 16
+    count = 75
     percentage = 0.0
   [groups.build]
     Selectors = ["balsam"]
   [groups.run]
-    artifact = "6792a8e9005e"
+    artifact = "1eeee542c2aa"
     [groups.run.test_params]
       timeout_secs = "600"
 
 [[groups]]
   id = "balsam2"
   [groups.instances]
-    count = 16
+    count = 75
     percentage = 0.0
   [groups.build]
     Selectors = ["balsam"]
   [groups.run]
-    artifact = "451f9f44a254"
+    artifact = "a2b53126d5ab"
     [groups.run.test_params]
       timeout_secs = "600"
