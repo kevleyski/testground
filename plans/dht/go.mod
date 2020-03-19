@@ -13,8 +13,8 @@ require (
 	github.com/ipfs/go-datastore v0.4.1
 	github.com/ipfs/go-ds-leveldb v0.4.1
 	github.com/ipfs/go-ipfs-util v0.0.1
-	github.com/ipfs/testground/sdk/runtime v0.2.0
-	github.com/ipfs/testground/sdk/sync v0.2.0
+	github.com/ipfs/testground/sdk/runtime v0.3.0
+	github.com/ipfs/testground/sdk/sync v0.3.0
 	github.com/libp2p/go-libp2p v0.4.2
 	github.com/libp2p/go-libp2p-autonat v0.1.1
 	github.com/libp2p/go-libp2p-autonat-svc v0.1.0
