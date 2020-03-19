@@ -65,4 +65,4 @@ RUN rm -f /usr/local/bin/delete_me
 ENV PATH="/usr/local/bin:${PATH}"
 
 EXPOSE 6060
-ENTRYPOINT [ "/testplan", "--vv"]
+ENTRYPOINT [ "sh", "-c", "ulimit -a && /testplan --vv" ]
