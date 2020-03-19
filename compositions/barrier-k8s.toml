@@ -1,0 +1,39 @@
+[metadata]
+  name = "barrier"
+  author = "adin"
+
+[global]
+  plan = "dht"
+  case = "barrier"
+  total_instances = 150
+  builder = "docker:go"
+  runner = "cluster:k8s"
+  [global.build_config]
+    push_registry = true
+    registry_type = "aws"
+  [global.run_config]
+    keep_services = true
+
+[[groups]]
+  id = "balsam"
+  [groups.instances]
+    count = 75
+    percentage = 0.0
+  [groups.build]
+    Selectors = ["balsam"]
+  [groups.run]
+    artifact = "909427826938.dkr.ecr.eu-central-1.amazonaws.com/testground-eu-central-1-dht:e04b61046f3b"
+    [groups.run.test_params]
+      timeout_secs = "600"
+
+[[groups]]
+  id = "balsam2"
+  [groups.instances]
+    count = 75
+    percentage = 0.0
+  [groups.build]
+    Selectors = ["balsam"]
+  [groups.run]
+    artifact = "909427826938.dkr.ecr.eu-central-1.amazonaws.com/testground-eu-central-1-dht:fd49fe294c66"
+    [groups.run.test_params]
+      timeout_secs = "600"
