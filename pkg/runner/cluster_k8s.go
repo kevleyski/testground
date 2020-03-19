@@ -217,6 +217,7 @@ func (c *ClusterK8sRunner) Run(ctx context.Context, input *api.RunInput, ow io.W
 		}
 		for i := 0; i < g.Instances; i++ {
 			i := i
+			g := g
 			sem <- struct{}{}
 
 			podName := fmt.Sprintf("%s-%s-%s-%d", jobName, input.RunID, g.ID, i)
@@ -259,6 +260,8 @@ func (c *ClusterK8sRunner) Run(ctx context.Context, input *api.RunInput, ow io.W
 	for _, g := range input.Groups {
 		for i := 0; i < g.Instances; i++ {
 			i := i
+			g := g
+
 			sem <- struct{}{}
 
 			gg.Go(func() error {
@@ -437,6 +440,21 @@ func (*ClusterK8sRunner) CompatibleBuilders() []string {
 	return []string{"docker:go"}
 }
 
+func (c *ClusterK8sRunner) initPool() {
+	once.Do(func() {
+		log := logging.S().With("runner", "cluster:k8s")
+
+		c.config = defaultKubernetesConfig()
+
+		var err error
+		workers := 20
+		c.pool, err = newPool(workers, c.config)
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+}
+
 func (c *ClusterK8sRunner) initRunner(cfg ClusterK8sRunnerConfig) {
 	once.Do(func() {
 		log := logging.S().With("runner", "cluster:k8s")
@@ -456,6 +474,8 @@ func (c *ClusterK8sRunner) initRunner(cfg ClusterK8sRunnerConfig) {
 }
 
 func (c *ClusterK8sRunner) CollectOutputs(ctx context.Context, input *api.CollectionInput, w io.Writer) error {
+	c.initPool()
+
 	log := logging.S().With("runner", "cluster:k8s", "run_id", input.RunID)
 	err := c.ensureCollectOutputsPod(ctx)
 	if err != nil {
